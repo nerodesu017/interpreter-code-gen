@@ -40,7 +40,7 @@ fn main() {
 
         let file_name = struct_name.to_lowercase() + "_expr.rs";
 
-        let sstruct = format!("pub struct {} {{ {} }}", struct_name, props);
+        let sstruct = format!("pub struct {} {{ {} }}", (struct_name.to_owned() + "Expr"), props);
 
         let mut ast = syn::parse_file(sstruct.as_str()).unwrap();
 
