@@ -3,6 +3,21 @@ name = "rust_interpreter_gen"
 version = "0.1.0"
 edition = "2021"
 
+[profile.dev]
+opt-level = 0
+debug = true
+split-debuginfo = '...'  # Platform-specific.
+strip = "none"
+debug-assertions = true
+overflow-checks = true
+lto = false
+panic = 'unwind'
+incremental = true
+codegen-units = 256
+rpath = false
+
 [dependencies]
 prettyplease = "0.2.20"
-syn = "2.0.66"
+proc-macro2 = "1.0.85"
+serde_json = "1.0.117"
+syn = {version = "2.0.66", features=["full", "extra-traits"]}
