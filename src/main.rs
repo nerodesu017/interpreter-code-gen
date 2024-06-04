@@ -1,19 +1,19 @@
 use std::collections::HashMap;
 
-use syn::PathSegment;
+use syn::{FieldsUnnamed, PathSegment, Variant};
 
 fn main() {
     // keep track of all written file names
     // this is for the Visitor trait
+    let mut all_expr_file_names_with_their_structs_names: Vec<(String, String)> = vec![];
     let mut all_files_names_with_their_structs_names: Vec<(String, String)> = vec![];
 
-    let token_item_use_str = "use crate::token::Token;";
-    let literal_item_use = "use crate::literal::Literal;";
-    let expr_item_use_str = "use super::Expr;";
-    let f = syn::parse_file("").unwrap();
-    let token_item_use = syn::parse_file(&token_item_use_str).unwrap().items[0].clone();
-    let literal_item_use = syn::parse_file(&literal_item_use).unwrap().items[0].clone();
-    let expr_item_use = syn::parse_file(&expr_item_use_str).unwrap().items[0].clone();
+    let token_item_use = syn::parse_file("use crate::token::Token;").unwrap().items[0].clone();
+    let literal_item_use = syn::parse_file("use crate::literal::Literal;")
+        .unwrap()
+        .items[0]
+        .clone();
+    let expr_item_use = syn::parse_file("use super::Expr;").unwrap().items[0].clone();
 
     let mut mappings: HashMap<&str, &syn::Item> = HashMap::new();
     mappings.insert("Expr", &expr_item_use);
@@ -48,8 +48,16 @@ fn main() {
 
         let struct_name = struct_name.to_owned() + "Expr";
 
+        all_expr_file_names_with_their_structs_names
+            .push((base_file_name.clone(), struct_name.clone()));
         all_files_names_with_their_structs_names
             .push((base_file_name.clone(), struct_name.clone()));
+
+        let props = props
+            .split(", ")
+            .map(|prop| return "pub ".to_owned() + prop)
+            .collect::<Vec<String>>()
+            .join(", ");
 
         let sstruct = format!("pub struct {} {{ {} }}", struct_name, props);
 
@@ -68,7 +76,81 @@ fn main() {
         .unwrap();
     }
 
-    // visitor
+    create_expr_file(&all_expr_file_names_with_their_structs_names);
+    create_visitor_file(&all_files_names_with_their_structs_names);
+}
+
+fn create_expr_file(all_expr_file_names_with_their_structs_names: &Vec<(String, String)>) {
+    let mut pub_mods = all_expr_file_names_with_their_structs_names
+        .iter()
+        .map(|entry| {
+            syn::Item::Mod(syn::ItemMod {
+                attrs: vec![],
+                vis: syn::Visibility::Public(syn::token::Pub {
+                    ..Default::default()
+                }),
+                unsafety: None,
+                mod_token: syn::token::Mod {
+                    ..Default::default()
+                },
+                ident: syn::Ident::new(entry.0.as_str(), proc_macro2::Span::call_site()),
+                content: None,
+                semi: Some(syn::token::Semi{..Default::default()}),
+            })
+        })
+        .collect::<Vec<syn::Item>>();
+
+    let mut expr_struct = syn::ItemEnum {
+        attrs: vec![],
+        vis: syn::Visibility::Public(syn::token::Pub{..Default::default()}),
+        enum_token: Default::default(),
+        ident: syn::Ident::new("Expr", proc_macro2::Span::call_site()),
+        generics: Default::default(),
+        brace_token: Default::default(),
+        variants: syn::punctuated::Punctuated::new(),
+    };
+
+    for (file_name, struct_name) in all_expr_file_names_with_their_structs_names {
+        let mut unnamed = syn::punctuated::Punctuated::new();
+        unnamed.push(syn::Field {
+            attrs: vec![],
+            vis: syn::Visibility::Inherited,
+            ident: None,
+            colon_token: None,
+            mutability: syn::FieldMutability::None,
+            ty: syn::Type::Path(syn::TypePath {
+                qself: None,
+                path: syn::Path {
+                    leading_colon: None,
+                    segments: {
+                        let mut segments = syn::punctuated::Punctuated::new();
+
+                        segments.push(PathSegment { ident: syn::Ident::new(file_name, proc_macro2::Span::call_site()), arguments: syn::PathArguments::None });
+                        segments.push(PathSegment { ident: syn::Ident::new(struct_name, proc_macro2::Span::call_site()), arguments: syn::PathArguments::None });
+                        segments
+                    }
+                }
+            })
+        });
+        expr_struct.variants.push(
+            Variant { attrs: Default::default(), ident: syn::Ident::new(&struct_name[0..&struct_name.len() - 4], proc_macro2::Span::call_site()), fields: 
+                syn::Fields::Unnamed(FieldsUnnamed {
+                    paren_token: Default::default(),
+                    unnamed
+                }), discriminant: None }
+        );
+    }
+
+    let mut expr_ast = syn::parse_file("").unwrap();
+    expr_ast.items.append(&mut pub_mods);
+    expr_ast.items.push(syn::Item::Enum(expr_struct));
+
+    std::fs::write("expr.rs", prettyplease::unparse(&expr_ast)).unwrap();
+
+
+}
+
+fn create_visitor_file(all_files_names_with_their_structs_names: &Vec<(String, String)>) {
     let visitor_imports = vec![syn::parse_file("use crate::expr::*;").unwrap().items[0].clone()];
 
     let mut visitor_ast = syn::parse_file(
